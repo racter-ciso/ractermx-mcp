@@ -56,7 +56,7 @@ function result(data) {
 
 const server = new McpServer({
   name: "ractermx",
-  version: "2.0.0",
+  version: "2.2.0",
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -135,6 +135,122 @@ server.registerTool("get_domain_statistics", {
   inputSchema: { domain_id: z.number().describe("Domain ID") },
   annotations: { readOnlyHint: true },
 }, async ({ domain_id }) => result(await v2("GET", `/domains/${domain_id}/statistics`)));
+
+// ═══════════════════════════════════════════════════════════════════
+// Domain Security (DoSPM) tools
+// ═══════════════════════════════════════════════════════════════════
+
+server.registerTool("get_security_checks", {
+  description: "Get all security check results for a domain, grouped by pillar (identity, shadow, reputation). Includes fixable findings with suggested fixes for DNS-hosted domains.",
+  inputSchema: { domain_id: z.number().describe("Domain ID") },
+  annotations: { readOnlyHint: true },
+}, async ({ domain_id }) => result(await v2("GET", `/domains/${domain_id}/security`)));
+
+server.registerTool("get_security_score", {
+  description: "Get the latest security posture score and grade for a domain, with pillar breakdown (identity, shadow, reputation)",
+  inputSchema: { domain_id: z.number().describe("Domain ID") },
+  annotations: { readOnlyHint: true },
+}, async ({ domain_id }) => result(await v2("GET", `/domains/${domain_id}/security/score`)));
+
+server.registerTool("trigger_security_scan", {
+  description: "Trigger an on-demand security scan for a domain. Rate-limited to once per hour per domain. Domain must have monitoring enabled.",
+  inputSchema: { domain_id: z.number().describe("Domain ID") },
+}, async ({ domain_id }) => result(await v2("POST", `/domains/${domain_id}/security/scan`)));
+
+server.registerTool("get_security_history", {
+  description: "Get security posture score history for a domain (last 90 days)",
+  inputSchema: { domain_id: z.number().describe("Domain ID") },
+  annotations: { readOnlyHint: true },
+}, async ({ domain_id }) => result(await v2("GET", `/domains/${domain_id}/security/history`)));
+
+server.registerTool("apply_security_fix", {
+  description: "Apply a suggested zone fix for a security finding. Only available for DNS-hosted domains with fixable findings.",
+  inputSchema: {
+    domain_id: z.number().describe("Domain ID"),
+    finding_id: z.number().describe("Finding/health-check ID from security check results"),
+  },
+}, async ({ domain_id, finding_id }) =>
+  result(await v2("POST", `/domains/${domain_id}/security/findings/${finding_id}/fix`))
+);
+
+server.registerTool("acknowledge_drift", {
+  description: "Acknowledge a drift event and update the DNS baseline snapshot so it no longer appears as drift",
+  inputSchema: {
+    domain_id: z.number().describe("Domain ID"),
+    event_id: z.number().describe("Drift event ID"),
+  },
+}, async ({ domain_id, event_id }) =>
+  result(await v2("POST", `/domains/${domain_id}/security/drift/${event_id}/acknowledge`))
+);
+
+// ═══════════════════════════════════════════════════════════════════
+// DNS Zone Record tools
+// ═══════════════════════════════════════════════════════════════════
+
+server.registerTool("list_zone_records", {
+  description: "List all DNS zone records for a domain (requires DNS hosted by RacterMX)",
+  inputSchema: { domain_id: z.number().describe("Domain ID") },
+  annotations: { readOnlyHint: true },
+}, async ({ domain_id }) => result(await v2("GET", `/domains/${domain_id}/zone-records`)));
+
+server.registerTool("create_zone_record", {
+  description: "Create a new DNS zone record for a domain (requires DNS hosted by RacterMX)",
+  inputSchema: {
+    domain_id: z.number().describe("Domain ID"),
+    name: z.string().describe("Record name (e.g. 'www', '@', 'mail.example.com')"),
+    type: z.string().describe("Record type (A, AAAA, CNAME, MX, TXT, SRV, NS, CAA, etc.)"),
+    content: z.string().describe("Record content/value"),
+    ttl: z.number().describe("TTL in seconds (60-86400)"),
+    priority: z.number().optional().describe("Priority (0-65535, for MX/SRV records)"),
+    weight: z.number().optional().describe("Weight (0-65535, for SRV records)"),
+    port: z.number().optional().describe("Port (1-65535, for SRV records)"),
+  },
+}, async ({ domain_id, name, type, content, ttl, priority, weight, port }) => {
+  const body = { name, type, content, ttl };
+  if (priority !== undefined) body.priority = priority;
+  if (weight !== undefined) body.weight = weight;
+  if (port !== undefined) body.port = port;
+  return result(await v2("POST", `/domains/${domain_id}/zone-records`, body));
+});
+
+server.registerTool("update_zone_record", {
+  description: "Update an existing DNS zone record. Identifies the record by its old values and replaces with new values.",
+  inputSchema: {
+    domain_id: z.number().describe("Domain ID"),
+    old_name: z.string().describe("Current record name"),
+    old_type: z.string().describe("Current record type"),
+    old_content: z.string().describe("Current record content"),
+    old_ttl: z.number().optional().describe("Current record TTL"),
+    new_name: z.string().describe("New record name"),
+    new_type: z.string().describe("New record type"),
+    new_content: z.string().describe("New record content"),
+    new_ttl: z.number().describe("New TTL in seconds (60-86400)"),
+    new_priority: z.number().optional().describe("New priority (0-65535, for MX/SRV)"),
+    new_weight: z.number().optional().describe("New weight (0-65535, for SRV)"),
+    new_port: z.number().optional().describe("New port (1-65535, for SRV)"),
+  },
+}, async ({ domain_id, old_name, old_type, old_content, old_ttl, new_name, new_type, new_content, new_ttl, new_priority, new_weight, new_port }) => {
+  const old = { name: old_name, type: old_type, content: old_content };
+  if (old_ttl !== undefined) old.ttl = old_ttl;
+  const nw = { name: new_name, type: new_type, content: new_content, ttl: new_ttl };
+  if (new_priority !== undefined) nw.priority = new_priority;
+  if (new_weight !== undefined) nw.weight = new_weight;
+  if (new_port !== undefined) nw.port = new_port;
+  return result(await v2("PATCH", `/domains/${domain_id}/zone-records`, { old, new: nw }));
+});
+
+server.registerTool("delete_zone_record", {
+  description: "Delete a DNS zone record from a domain. Identifies the record by name, type, and content.",
+  inputSchema: {
+    domain_id: z.number().describe("Domain ID"),
+    name: z.string().describe("Record name"),
+    type: z.string().describe("Record type"),
+    content: z.string().describe("Record content"),
+  },
+  annotations: { destructiveHint: true },
+}, async ({ domain_id, name, type, content }) => {
+  return result(await v2("DELETE", `/domains/${domain_id}/zone-records`, { name, type, content }));
+});
 
 // ═══════════════════════════════════════════════════════════════════
 // Alias tools

@@ -33,7 +33,7 @@ Add to your MCP config:
 }
 ```
 
-## Available Tools (37 total)
+## Available Tools (47 total)
 
 All tools target the V2 API (`/api/v2`).
 
@@ -46,6 +46,20 @@ All tools target the V2 API (`/api/v2`).
 - `verify_domain_dns` — Trigger DNS verification
 - `get_domain_dns_records` — Get required DNS records
 - `get_domain_statistics` — Get email stats
+
+### Domain Security / DoSPM (6)
+- `get_security_checks` — Get all security check results grouped by pillar
+- `get_security_score` — Get latest posture score and grade
+- `trigger_security_scan` — Trigger an on-demand security scan (1/hr rate limit)
+- `get_security_history` — Get score history (last 90 days)
+- `apply_security_fix` — Apply a suggested zone fix for a finding
+- `acknowledge_drift` — Acknowledge a drift event and update baseline
+
+### DNS Zone Records (4)
+- `list_zone_records` — List all DNS zone records for a domain
+- `create_zone_record` — Create a new DNS record (A, AAAA, CNAME, MX, TXT, SRV, etc.)
+- `update_zone_record` — Update an existing DNS record (identify by old values, replace with new)
+- `delete_zone_record` — Delete a DNS record (identify by name, type, content)
 
 ### Aliases (5)
 - `list_aliases` — List aliases for a domain

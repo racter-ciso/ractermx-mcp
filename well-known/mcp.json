@@ -1,0 +1,80 @@
+{
+  "mcp_version": "2025-11-25",
+  "server": {
+    "name": "ractermx",
+    "version": "2.2.0",
+    "description": "MCP server for managing RacterMX email forwarding — domains, aliases, DNS zones, webhooks, blocklists, SMTP credentials, and more — via AI assistants.",
+    "homepage": "https://ractermx.com/developers",
+    "repository": "https://github.com/racter-ciso/ractermx-mcp"
+  },
+  "installation": {
+    "npm": {
+      "package": "@ractermx/mcp-server",
+      "registry": "https://registry.npmjs.org"
+    },
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@ractermx/mcp-server"],
+    "env": {
+      "RACTERMX_API_KEY": {
+        "description": "Your RacterMX API key (sk_*)",
+        "required": true,
+        "secret": true
+      }
+    }
+  },
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "prompts": false
+  },
+  "tools": [
+    { "name": "list_domains", "description": "List all forwarding domains" },
+    { "name": "get_domain", "description": "Get domain details and DNS records" },
+    { "name": "add_domain", "description": "Add a new forwarding domain" },
+    { "name": "update_domain", "description": "Update domain settings" },
+    { "name": "delete_domain", "description": "Remove a domain" },
+    { "name": "verify_domain_dns", "description": "Trigger DNS verification" },
+    { "name": "get_domain_dns_records", "description": "Get required DNS records" },
+    { "name": "get_domain_statistics", "description": "Get email stats for a domain" },
+    { "name": "get_security_checks", "description": "Get all security check results grouped by pillar" },
+    { "name": "get_security_score", "description": "Get latest posture score and grade" },
+    { "name": "trigger_security_scan", "description": "Trigger an on-demand security scan" },
+    { "name": "get_security_history", "description": "Get security score history (90 days)" },
+    { "name": "apply_security_fix", "description": "Apply a suggested zone fix for a finding" },
+    { "name": "acknowledge_drift", "description": "Acknowledge a drift event and update baseline" },
+    { "name": "list_zone_records", "description": "List all DNS zone records for a domain" },
+    { "name": "create_zone_record", "description": "Create a new DNS zone record" },
+    { "name": "update_zone_record", "description": "Update an existing DNS zone record" },
+    { "name": "delete_zone_record", "description": "Delete a DNS zone record" },
+    { "name": "list_aliases", "description": "List aliases for a domain" },
+    { "name": "get_alias", "description": "Get alias details" },
+    { "name": "create_alias", "description": "Create a new email alias" },
+    { "name": "update_alias", "description": "Update an alias" },
+    { "name": "delete_alias", "description": "Delete an alias" },
+    { "name": "list_email_logs", "description": "Search email logs with filters" },
+    { "name": "get_email_log", "description": "Get a specific log entry" },
+    { "name": "send_email", "description": "Send an email through a verified domain" },
+    { "name": "list_webhooks", "description": "List webhook endpoints" },
+    { "name": "create_webhook", "description": "Create a webhook" },
+    { "name": "update_webhook", "description": "Update a webhook" },
+    { "name": "delete_webhook", "description": "Delete a webhook" },
+    { "name": "test_webhook", "description": "Send a test event to a webhook" },
+    { "name": "list_webhook_delivery_logs", "description": "View webhook delivery history" },
+    { "name": "retry_webhook_delivery", "description": "Retry a failed delivery" },
+    { "name": "list_blocklist", "description": "List blocked senders" },
+    { "name": "add_blocklist_entry", "description": "Block a sender or pattern" },
+    { "name": "remove_blocklist_entry", "description": "Unblock a sender" },
+    { "name": "list_api_keys", "description": "List active API keys" },
+    { "name": "create_api_key", "description": "Create a new API key" },
+    { "name": "revoke_api_key", "description": "Revoke an API key" },
+    { "name": "list_smtp_credentials", "description": "List SMTP credentials" },
+    { "name": "create_smtp_credential", "description": "Create SMTP credentials" },
+    { "name": "delete_smtp_credential", "description": "Delete SMTP credentials" },
+    { "name": "reset_smtp_password", "description": "Reset SMTP credential password" },
+    { "name": "get_retention_policy", "description": "View retention settings" },
+    { "name": "update_retention_policy", "description": "Update retention policy" },
+    { "name": "list_anonymous_replies", "description": "List anonymous reply proxies" },
+    { "name": "disable_anonymous_reply", "description": "Disable a proxy address" }
+  ]
+}
