@@ -56,8 +56,67 @@ function result(data) {
 
 const server = new McpServer({
   name: "ractermx",
-  version: "2.2.0",
+  version: "2.3.0",
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// Dashboard & Statistics
+// ═══════════════════════════════════════════════════════════════════
+
+server.registerTool("get_dashboard", {
+  description: "Get dashboard statistics overview for your account",
+  annotations: { readOnlyHint: true },
+}, async () => result(await v2("GET", "/dashboard")));
+
+server.registerTool("get_statistics", {
+  description: "Get aggregated email statistics with optional date range",
+  inputSchema: {
+    date_from: z.string().optional().describe("Start date (YYYY-MM-DD)"),
+    date_to: z.string().optional().describe("End date (YYYY-MM-DD)"),
+  },
+  annotations: { readOnlyHint: true },
+}, async ({ date_from, date_to }) => {
+  const qs = new URLSearchParams();
+  if (date_from) qs.set("date_from", date_from);
+  if (date_to) qs.set("date_to", date_to);
+  const q = qs.toString();
+  return result(await v2("GET", `/statistics${q ? "?" + q : ""}`));
+});
+
+server.registerTool("get_daily_statistics", {
+  description: "Get daily email statistics breakdown for charts",
+  inputSchema: {
+    date_from: z.string().optional().describe("Start date (YYYY-MM-DD)"),
+    date_to: z.string().optional().describe("End date (YYYY-MM-DD)"),
+  },
+  annotations: { readOnlyHint: true },
+}, async ({ date_from, date_to }) => {
+  const qs = new URLSearchParams();
+  if (date_from) qs.set("date_from", date_from);
+  if (date_to) qs.set("date_to", date_to);
+  const q = qs.toString();
+  return result(await v2("GET", `/statistics/daily${q ? "?" + q : ""}`));
+});
+
+server.registerTool("get_statistics_by_domain", {
+  description: "Get email statistics grouped by domain",
+  inputSchema: {
+    date_from: z.string().optional().describe("Start date (YYYY-MM-DD)"),
+    date_to: z.string().optional().describe("End date (YYYY-MM-DD)"),
+  },
+  annotations: { readOnlyHint: true },
+}, async ({ date_from, date_to }) => {
+  const qs = new URLSearchParams();
+  if (date_from) qs.set("date_from", date_from);
+  if (date_to) qs.set("date_to", date_to);
+  const q = qs.toString();
+  return result(await v2("GET", `/statistics/by-domain${q ? "?" + q : ""}`));
+});
+
+server.registerTool("get_quota", {
+  description: "Get current account quota and usage limits",
+  annotations: { readOnlyHint: true },
+}, async () => result(await v2("GET", "/quota")));
 
 // ═══════════════════════════════════════════════════════════════════
 // Domain tools
@@ -97,10 +156,11 @@ server.registerTool("add_domain", {
 });
 
 server.registerTool("update_domain", {
-  description: "Update a domain's settings (active status, catch-all, max aliases)",
+  description: "Update a domain's settings (active status, monitoring, catch-all, max aliases)",
   inputSchema: {
     domain_id: z.number().describe("Domain ID"),
     is_active: z.boolean().optional().describe("Enable or disable the domain"),
+    is_monitored: z.boolean().optional().describe("Enable or disable security monitoring"),
     catch_all_enabled: z.boolean().optional().describe("Enable or disable catch-all"),
     catch_all_forward_to: z.string().optional().describe("Catch-all forward address"),
     max_aliases: z.number().optional().describe("Maximum aliases allowed (1-1000)"),
@@ -114,7 +174,7 @@ server.registerTool("update_domain", {
 });
 
 server.registerTool("delete_domain", {
-  description: "Remove a domain from your account",
+  description: "Remove a domain and all its aliases from your account",
   inputSchema: { domain_id: z.number().describe("Domain ID") },
   annotations: { destructiveHint: true },
 }, async ({ domain_id }) => result(await v2("DELETE", `/domains/${domain_id}`)));
@@ -125,16 +185,22 @@ server.registerTool("verify_domain_dns", {
 }, async ({ domain_id }) => result(await v2("POST", `/domains/${domain_id}/verify-dns`)));
 
 server.registerTool("get_domain_dns_records", {
-  description: "Get required DNS records for a domain",
+  description: "Get required DNS records for a domain (MX, SPF, DKIM, DMARC)",
   inputSchema: { domain_id: z.number().describe("Domain ID") },
   annotations: { readOnlyHint: true },
 }, async ({ domain_id }) => result(await v2("GET", `/domains/${domain_id}/dns-records`)));
 
 server.registerTool("get_domain_statistics", {
-  description: "Get email statistics for a domain",
+  description: "Get email statistics for a specific domain",
   inputSchema: { domain_id: z.number().describe("Domain ID") },
   annotations: { readOnlyHint: true },
 }, async ({ domain_id }) => result(await v2("GET", `/domains/${domain_id}/statistics`)));
+
+server.registerTool("get_domain_health", {
+  description: "Get domain health dashboard showing SPF, DKIM, DMARC, and MX record status",
+  inputSchema: { domain_id: z.number().describe("Domain ID") },
+  annotations: { readOnlyHint: true },
+}, async ({ domain_id }) => result(await v2("GET", `/domains/${domain_id}/health`)));
 
 // ═══════════════════════════════════════════════════════════════════
 // Domain Security (DoSPM) tools
@@ -158,7 +224,7 @@ server.registerTool("trigger_security_scan", {
 }, async ({ domain_id }) => result(await v2("POST", `/domains/${domain_id}/security/scan`)));
 
 server.registerTool("get_security_history", {
-  description: "Get security posture score history for a domain (last 90 days)",
+  description: "Get security posture score history for a domain (up to 365 days)",
   inputSchema: { domain_id: z.number().describe("Domain ID") },
   annotations: { readOnlyHint: true },
 }, async ({ domain_id }) => result(await v2("GET", `/domains/${domain_id}/security/history`)));
@@ -183,6 +249,26 @@ server.registerTool("acknowledge_drift", {
   result(await v2("POST", `/domains/${domain_id}/security/drift/${event_id}/acknowledge`))
 );
 
+server.registerTool("get_check_catalog", {
+  description: "Get the full security check catalog grouped by pillar, including tenant-level overrides",
+  annotations: { readOnlyHint: true },
+}, async () => result(await v2("GET", "/check-catalog")));
+
+server.registerTool("set_check_override", {
+  description: "Create or update a security check override for a domain. Allows enabling/disabling individual checks and overriding severity on a per-domain basis.",
+  inputSchema: {
+    domain_id: z.number().describe("Domain ID"),
+    check_id: z.string().describe("Check ID from the check catalog"),
+    enabled: z.boolean().optional().describe("Enable or disable this check for the domain"),
+    severity_override: z.string().optional().describe("Override severity: critical, high, medium, low, or informational"),
+  },
+}, async ({ domain_id, check_id, enabled, severity_override }) => {
+  const body = {};
+  if (enabled !== undefined) body.enabled = enabled;
+  if (severity_override) body.severity_override = severity_override;
+  return result(await v2("PUT", `/domains/${domain_id}/check-overrides/${check_id}`, body));
+});
+
 // ═══════════════════════════════════════════════════════════════════
 // DNS Zone Record tools
 // ═══════════════════════════════════════════════════════════════════
@@ -201,15 +287,11 @@ server.registerTool("create_zone_record", {
     type: z.string().describe("Record type (A, AAAA, CNAME, MX, TXT, SRV, NS, CAA, etc.)"),
     content: z.string().describe("Record content/value"),
     ttl: z.number().describe("TTL in seconds (60-86400)"),
-    priority: z.number().optional().describe("Priority (0-65535, for MX/SRV records)"),
-    weight: z.number().optional().describe("Weight (0-65535, for SRV records)"),
-    port: z.number().optional().describe("Port (1-65535, for SRV records)"),
+    priority: z.number().optional().describe("Priority (for MX/SRV records)"),
   },
-}, async ({ domain_id, name, type, content, ttl, priority, weight, port }) => {
+}, async ({ domain_id, name, type, content, ttl, priority }) => {
   const body = { name, type, content, ttl };
   if (priority !== undefined) body.priority = priority;
-  if (weight !== undefined) body.weight = weight;
-  if (port !== undefined) body.port = port;
   return result(await v2("POST", `/domains/${domain_id}/zone-records`, body));
 });
 
@@ -220,22 +302,16 @@ server.registerTool("update_zone_record", {
     old_name: z.string().describe("Current record name"),
     old_type: z.string().describe("Current record type"),
     old_content: z.string().describe("Current record content"),
-    old_ttl: z.number().optional().describe("Current record TTL"),
     new_name: z.string().describe("New record name"),
     new_type: z.string().describe("New record type"),
     new_content: z.string().describe("New record content"),
-    new_ttl: z.number().describe("New TTL in seconds (60-86400)"),
-    new_priority: z.number().optional().describe("New priority (0-65535, for MX/SRV)"),
-    new_weight: z.number().optional().describe("New weight (0-65535, for SRV)"),
-    new_port: z.number().optional().describe("New port (1-65535, for SRV)"),
+    new_ttl: z.number().describe("New TTL in seconds"),
+    new_priority: z.number().optional().describe("New priority (for MX/SRV)"),
   },
-}, async ({ domain_id, old_name, old_type, old_content, old_ttl, new_name, new_type, new_content, new_ttl, new_priority, new_weight, new_port }) => {
+}, async ({ domain_id, old_name, old_type, old_content, new_name, new_type, new_content, new_ttl, new_priority }) => {
   const old = { name: old_name, type: old_type, content: old_content };
-  if (old_ttl !== undefined) old.ttl = old_ttl;
   const nw = { name: new_name, type: new_type, content: new_content, ttl: new_ttl };
   if (new_priority !== undefined) nw.priority = new_priority;
-  if (new_weight !== undefined) nw.weight = new_weight;
-  if (new_port !== undefined) nw.port = new_port;
   return result(await v2("PATCH", `/domains/${domain_id}/zone-records`, { old, new: nw }));
 });
 
@@ -248,9 +324,9 @@ server.registerTool("delete_zone_record", {
     content: z.string().describe("Record content"),
   },
   annotations: { destructiveHint: true },
-}, async ({ domain_id, name, type, content }) => {
-  return result(await v2("DELETE", `/domains/${domain_id}/zone-records`, { name, type, content }));
-});
+}, async ({ domain_id, name, type, content }) =>
+  result(await v2("DELETE", `/domains/${domain_id}/zone-records`, { name, type, content }))
+);
 
 // ═══════════════════════════════════════════════════════════════════
 // Alias tools
@@ -306,6 +382,30 @@ server.registerTool("delete_alias", {
   annotations: { destructiveHint: true },
 }, async ({ alias_id }) => result(await v2("DELETE", `/aliases/${alias_id}`)));
 
+server.registerTool("get_alias_statistics", {
+  description: "Get per-alias forwarding statistics with optional date range",
+  inputSchema: {
+    alias_id: z.number().describe("Alias ID"),
+    start_date: z.string().optional().describe("Start date (YYYY-MM-DD)"),
+    end_date: z.string().optional().describe("End date (YYYY-MM-DD)"),
+    days: z.number().optional().describe("Number of days to look back (default 30)"),
+  },
+  annotations: { readOnlyHint: true },
+}, async ({ alias_id, start_date, end_date, days }) => {
+  const qs = new URLSearchParams();
+  if (start_date) qs.set("start_date", start_date);
+  if (end_date) qs.set("end_date", end_date);
+  if (days !== undefined) qs.set("days", String(days));
+  const q = qs.toString();
+  return result(await v2("GET", `/aliases/${alias_id}/statistics${q ? "?" + q : ""}`));
+});
+
+server.registerTool("export_aliases", {
+  description: "Export all aliases for a domain as CSV",
+  inputSchema: { domain_id: z.number().describe("Domain ID") },
+  annotations: { readOnlyHint: true },
+}, async ({ domain_id }) => result(await v2("GET", `/domains/${domain_id}/aliases/export`)));
+
 // ═══════════════════════════════════════════════════════════════════
 // Email Log tools
 // ═══════════════════════════════════════════════════════════════════
@@ -318,6 +418,7 @@ server.registerTool("list_email_logs", {
     sender: z.string().optional().describe("Filter by sender address (partial match)"),
     recipient: z.string().optional().describe("Filter by recipient address (partial match)"),
     status: z.string().optional().describe("Filter by status (forwarded, bounced, rejected, spam)"),
+    search: z.string().optional().describe("Full-text search across from, to, and subject"),
     start_date: z.string().optional().describe("Start date (YYYY-MM-DD), max 30 day range"),
     end_date: z.string().optional().describe("End date (YYYY-MM-DD)"),
     per_page: z.number().optional().describe("Results per page (default 50)"),
@@ -370,7 +471,7 @@ server.registerTool("create_webhook", {
   description: "Create a new webhook endpoint",
   inputSchema: {
     url: z.string().describe("Webhook URL to receive events"),
-    events: z.array(z.string()).describe("Events to subscribe to: sent, delivered, bounced, failed, unsubscribed"),
+    events: z.array(z.string()).describe("Events: email.received, email.forwarded, email.bounced, email.rejected, email.spam"),
     custom_headers: z.record(z.string()).optional().describe("Custom headers to include"),
     timeout_seconds: z.number().optional().describe("Request timeout 5-30s (default 10)"),
     batch_enabled: z.boolean().optional().describe("Enable batch delivery"),
@@ -390,14 +491,13 @@ server.registerTool("update_webhook", {
     url: z.string().optional().describe("New URL"),
     events: z.array(z.string()).optional().describe("Updated event subscriptions"),
     enabled: z.boolean().optional().describe("Enable or disable"),
-    timeout_seconds: z.number().optional().describe("Request timeout 5-30s"),
   },
 }, async ({ webhook_id, ...updates }) => {
   const body = {};
   for (const [k, v] of Object.entries(updates)) {
     if (v !== undefined) body[k] = v;
   }
-  return result(await v2("PATCH", `/webhooks/${webhook_id}`, body));
+  return result(await v2("PUT", `/webhooks/${webhook_id}`, body));
 });
 
 server.registerTool("delete_webhook", {
@@ -411,13 +511,22 @@ server.registerTool("test_webhook", {
   inputSchema: { webhook_id: z.number().describe("Webhook ID") },
 }, async ({ webhook_id }) => result(await v2("POST", `/webhooks/${webhook_id}/test`)));
 
+server.registerTool("get_webhook_secret", {
+  description: "Reveal the signing secret for a webhook endpoint",
+  inputSchema: { webhook_id: z.number().describe("Webhook ID") },
+  annotations: { readOnlyHint: true },
+}, async ({ webhook_id }) => result(await v2("GET", `/webhooks/${webhook_id}/secret`)));
+
+server.registerTool("rotate_webhook_secret", {
+  description: "Rotate the signing secret for a webhook endpoint. The old secret will stop working immediately.",
+  inputSchema: { webhook_id: z.number().describe("Webhook ID") },
+}, async ({ webhook_id }) => result(await v2("POST", `/webhooks/${webhook_id}/rotate-secret`)));
+
 server.registerTool("list_webhook_delivery_logs", {
   description: "List delivery logs for a webhook endpoint",
   inputSchema: {
     webhook_id: z.number().describe("Webhook ID"),
-    status: z.string().optional().describe("Filter: success, failure, or all"),
-    date_from: z.string().optional().describe("Start date (YYYY-MM-DD)"),
-    date_to: z.string().optional().describe("End date (YYYY-MM-DD)"),
+    status: z.string().optional().describe("Filter: success, failed, or all"),
     per_page: z.number().optional().describe("Results per page (default 50)"),
   },
   annotations: { readOnlyHint: true },
@@ -470,7 +579,7 @@ server.registerTool("create_api_key", {
   description: "Create a new API key",
   inputSchema: {
     name: z.string().describe("Descriptive name for the key"),
-    scopes: z.array(z.string()).describe("Scopes: email:send, email:read, webhooks:manage"),
+    scopes: z.array(z.string()).describe("Scopes: email:read, email:send, domains:read, domains:manage, aliases:read, aliases:manage, smtp:read, smtp:manage, webhooks:read, webhooks:manage, blocklist:read, blocklist:manage, api-keys:manage, retention:read, retention:manage"),
     expires_at: z.string().optional().describe("Expiration date (ISO 8601)"),
   },
 }, async ({ name, scopes, expires_at }) => {
@@ -520,6 +629,17 @@ server.registerTool("reset_smtp_password", {
   result(await v2("POST", `/smtp-credentials/${credential_id}/reset-password`))
 );
 
+server.registerTool("set_smtp_reply_from", {
+  description: "Set a custom reply-from alias for anonymous replies on an SMTP credential",
+  inputSchema: {
+    credential_id: z.number().describe("SMTP credential ID"),
+    reply_from_alias_id: z.number().optional().describe("Alias ID to use as reply-from, or omit/null to clear"),
+  },
+}, async ({ credential_id, reply_from_alias_id }) => {
+  const body = { reply_from_alias_id: reply_from_alias_id ?? null };
+  return result(await v2("PATCH", `/smtp-credentials/${credential_id}/reply-from`, body));
+});
+
 // ═══════════════════════════════════════════════════════════════════
 // Retention Policy
 // ═══════════════════════════════════════════════════════════════════
@@ -533,11 +653,10 @@ server.registerTool("update_retention_policy", {
   description: "Update the email log retention policy",
   inputSchema: {
     metadata_retention_days: z.number().describe("Days to retain email metadata (7-2555)"),
-    content_retention_days: z.number().describe("Days to retain email content (7-2555)"),
     event_specific_retention: z.record(z.number()).optional().describe("Per-event retention overrides (event_name → days)"),
   },
-}, async ({ metadata_retention_days, content_retention_days, event_specific_retention }) => {
-  const body = { metadata_retention_days, content_retention_days };
+}, async ({ metadata_retention_days, event_specific_retention }) => {
+  const body = { metadata_retention_days };
   if (event_specific_retention) body.event_specific_retention = event_specific_retention;
   return result(await v2("PUT", "/retention-policy", body));
 });

@@ -7,12 +7,12 @@
     "url": "https://github.com/racter-ciso/ractermx-mcp",
     "source": "github"
   },
-  "version": "2.2.0",
+  "version": "2.3.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@ractermx/mcp-server",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "transport": {
         "type": "stdio"
       },

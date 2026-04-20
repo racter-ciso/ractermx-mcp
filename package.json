@@ -1,6 +1,6 @@
 {
   "name": "@ractermx/mcp-server",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "mcpName": "io.github.racter-ciso/ractermx",
   "description": "MCP server for managing RacterMX email forwarding via AI assistants",
   "type": "module",
