@@ -2,17 +2,17 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.racter-ciso/ractermx",
   "title": "RacterMX",
-  "description": "Manage RacterMX email forwarding — domains, aliases, DNS zones, webhooks, and more — via AI.",
+  "description": "Manage RacterMX — domains, aliases, DNS zones, DMARC, reputation monitoring, security posture, alerts, organizations, and more — via AI.",
   "repository": {
     "url": "https://github.com/racter-ciso/ractermx-mcp",
     "source": "github"
   },
-  "version": "2.3.0",
+  "version": "3.0.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@ractermx/mcp-server",
-      "version": "2.3.0",
+      "version": "3.0.0",
       "transport": {
         "type": "stdio"
       },
