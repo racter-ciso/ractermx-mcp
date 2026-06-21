@@ -37,6 +37,27 @@ Add to your MCP config:
 
 All tools target the V2 API (`/api/v2`).
 
+### Required API Key Scopes
+
+Each tool group requires specific scopes on your API key:
+
+| Tool Group | Required Scope |
+|-----------|---------------|
+| Dashboard, Statistics, Email Logs, Search, Quota, Rate Limit | `email:read` |
+| Email Sending | `email:send` |
+| Domains, Tags, Organizations, Verification, Transfers, Security, Check Catalog, Reputation, DMARC | `domains:read` / `domains:manage` |
+| Aliases | `aliases:read` / `aliases:manage` |
+| SMTP Credentials, Anonymous Replies | `smtp:read` / `smtp:manage` |
+| Webhooks | `webhooks:read` / `webhooks:manage` |
+| Blocklist | `blocklist:read` / `blocklist:manage` |
+| API Keys, Compliance Export | `api-keys:manage` |
+| Retention Policy | `retention:read` / `retention:manage` |
+| DNS Zone Records | `dns-zone:read` / `dns-zone:manage` |
+| Notifications | `notifications:read` / `notifications:manage` |
+| Alert Rules | `alerts:read` / `alerts:manage` |
+
+Create an API key with all 21 scopes for full access, or limit to specific scopes for restricted integrations.
+
 ### Dashboard & Statistics (5)
 - `get_dashboard` — Dashboard statistics overview
 - `get_statistics` — Aggregated email statistics

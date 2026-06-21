@@ -14,7 +14,7 @@ if (!API_KEY) {
 
 // ── HTTP helpers ──
 
-async function api(method, path, body = null) {
+async function api(method, path, body = null, retries = 3) {
   const url = `${API_BASE}${path}`;
   const opts = {
     method,
@@ -23,31 +23,46 @@ async function api(method, path, body = null) {
       Accept: "application/json",
       "Content-Type": "application/json",
     },
+    signal: AbortSignal.timeout(30000),
   };
   if (body) opts.body = JSON.stringify(body);
 
-  const res = await fetch(url, opts);
-  const text = await res.text();
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const res = await fetch(url, opts);
+    const text = await res.text();
 
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    data = { raw: text };
-  }
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
 
-  if (!res.ok) {
+    if (res.ok) return data;
+
+    // Rate limited — wait and retry
+    if (res.status === 429) {
+      const retryAfter = parseInt(res.headers.get("Retry-After") || "5", 10);
+      await new Promise((r) => setTimeout(r, retryAfter * 1000));
+      continue;
+    }
+
+    // Server error — retry with exponential backoff
+    if (res.status >= 500 && attempt < retries) {
+      await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
+      continue;
+    }
+
+    // Client error or final attempt — throw
     throw new Error(
       `API ${method} ${path} → ${res.status}: ${JSON.stringify(data)}`
     );
   }
-  return data;
 }
 
 function v2(method, path, body) {
   return api(method, `/api/v2${path}`, body);
 }
-
 function result(data) {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
@@ -126,11 +141,15 @@ server.registerTool("list_domains", {
   description: "List all email forwarding domains in your account",
   inputSchema: {
     per_page: z.number().optional().describe("Results per page (default 15)"),
+    page: z.number().optional().describe("Page number (default 1)"),
   },
   annotations: { readOnlyHint: true },
-}, async ({ per_page }) => {
-  const qs = per_page ? `?per_page=${per_page}` : "";
-  return result(await v2("GET", `/domains${qs}`));
+}, async ({ per_page, page }) => {
+  const qs = new URLSearchParams();
+  if (per_page) qs.set("per_page", per_page);
+  if (page) qs.set("page", page);
+  const q = qs.toString();
+  return result(await v2("GET", `/domains${q ? "?" + q : ""}`));
 });
 
 server.registerTool("get_domain", {
@@ -143,12 +162,14 @@ server.registerTool("add_domain", {
   description: "Add a new forwarding domain to your account",
   inputSchema: {
     name: z.string().describe("Domain name (e.g. example.com)"),
+    organization_id: z.number().optional().describe("Organization ID to assign the domain to"),
     catch_all_enabled: z.boolean().optional().describe("Enable catch-all forwarding"),
     catch_all_forward_to: z.string().optional().describe("Email to forward catch-all mail to"),
     max_aliases: z.number().optional().describe("Maximum aliases allowed (1-1000, default 100)"),
   },
-}, async ({ name, catch_all_enabled, catch_all_forward_to, max_aliases }) => {
+}, async ({ name, organization_id, catch_all_enabled, catch_all_forward_to, max_aliases }) => {
   const body = { name };
+  if (organization_id !== undefined) body.organization_id = organization_id;
   if (catch_all_enabled !== undefined) body.catch_all_enabled = catch_all_enabled;
   if (catch_all_forward_to) body.catch_all_forward_to = catch_all_forward_to;
   if (max_aliases !== undefined) body.max_aliases = max_aliases;
@@ -156,14 +177,14 @@ server.registerTool("add_domain", {
 });
 
 server.registerTool("update_domain", {
-  description: "Update a domain's settings (active status, monitoring, catch-all, max aliases)",
+  description: "Update a domain's settings (DNS mode, catch-all, max aliases, unsubscribe rewriting)",
   inputSchema: {
     domain_id: z.number().describe("Domain ID"),
-    is_active: z.boolean().optional().describe("Enable or disable the domain"),
-    is_monitored: z.boolean().optional().describe("Enable or disable security monitoring"),
+    dns_mode: z.string().optional().describe("DNS mode: scan_only, mx_forwarding, or dns_hosted"),
     catch_all_enabled: z.boolean().optional().describe("Enable or disable catch-all"),
     catch_all_forward_to: z.string().optional().describe("Catch-all forward address"),
     max_aliases: z.number().optional().describe("Maximum aliases allowed (1-1000)"),
+    unsubscribe_rewriting_enabled: z.boolean().optional().describe("Enable or disable unsubscribe link rewriting"),
   },
 }, async ({ domain_id, ...updates }) => {
   const body = {};
@@ -288,10 +309,14 @@ server.registerTool("create_zone_record", {
     content: z.string().describe("Record content/value"),
     ttl: z.number().describe("TTL in seconds (60-86400)"),
     priority: z.number().optional().describe("Priority (for MX/SRV records)"),
+    weight: z.number().optional().describe("Weight (for SRV records)"),
+    port: z.number().optional().describe("Port (for SRV records)"),
   },
-}, async ({ domain_id, name, type, content, ttl, priority }) => {
+}, async ({ domain_id, name, type, content, ttl, priority, weight, port }) => {
   const body = { name, type, content, ttl };
   if (priority !== undefined) body.priority = priority;
+  if (weight !== undefined) body.weight = weight;
+  if (port !== undefined) body.port = port;
   return result(await v2("POST", `/domains/${domain_id}/zone-records`, body));
 });
 
@@ -334,9 +359,19 @@ server.registerTool("delete_zone_record", {
 
 server.registerTool("list_aliases", {
   description: "List all email aliases for a domain",
-  inputSchema: { domain_id: z.number().describe("Domain ID") },
+  inputSchema: {
+    domain_id: z.number().describe("Domain ID"),
+    per_page: z.number().optional().describe("Results per page (default 50)"),
+    page: z.number().optional().describe("Page number (default 1)"),
+  },
   annotations: { readOnlyHint: true },
-}, async ({ domain_id }) => result(await v2("GET", `/domains/${domain_id}/aliases`)));
+}, async ({ domain_id, per_page, page }) => {
+  const qs = new URLSearchParams();
+  if (per_page) qs.set("per_page", per_page);
+  if (page) qs.set("page", page);
+  const q = qs.toString();
+  return result(await v2("GET", `/domains/${domain_id}/aliases${q ? "?" + q : ""}`));
+});
 
 server.registerTool("get_alias", {
   description: "Get details of a specific alias",
@@ -447,13 +482,13 @@ server.registerTool("send_email", {
   description: "Send an email through a configured domain",
   inputSchema: {
     from: z.string().describe("Sender address (must be an alias on a verified domain)"),
-    to: z.string().describe("Recipient email address"),
+    to: z.union([z.string(), z.array(z.string())]).describe("Recipient email address(es) — single string or array"),
     subject: z.string().describe("Email subject"),
-    body: z.string().describe("Email body (plain text)"),
+    text: z.string().describe("Email body (plain text)"),
     html: z.string().optional().describe("HTML body (optional)"),
   },
-}, async ({ from, to, subject, body, html }) => {
-  const payload = { from, to: [to], subject, text: body };
+}, async ({ from, to, subject, text, html }) => {
+  const payload = { from, to: Array.isArray(to) ? to : [to], subject, text };
   if (html) payload.html = html;
   return result(await v2("POST", "/emails/send", payload));
 });
@@ -579,12 +614,14 @@ server.registerTool("create_api_key", {
   description: "Create a new API key",
   inputSchema: {
     name: z.string().describe("Descriptive name for the key"),
-    scopes: z.array(z.string()).describe("Scopes: email:read, email:send, domains:read, domains:manage, aliases:read, aliases:manage, smtp:read, smtp:manage, webhooks:read, webhooks:manage, blocklist:read, blocklist:manage, api-keys:manage, retention:read, retention:manage"),
+    scopes: z.array(z.string()).describe("Scopes: email:read, email:send, domains:read, domains:manage, aliases:read, aliases:manage, smtp:read, smtp:manage, webhooks:read, webhooks:manage, blocklist:read, blocklist:manage, api-keys:manage, retention:read, retention:manage, dns-zone:read, dns-zone:manage, notifications:read, notifications:manage, alerts:read, alerts:manage"),
     expires_at: z.string().optional().describe("Expiration date (ISO 8601)"),
+    allowed_ips: z.array(z.string()).optional().describe("IP addresses or CIDR ranges allowed to use this key (max 20)"),
   },
-}, async ({ name, scopes, expires_at }) => {
+}, async ({ name, scopes, expires_at, allowed_ips }) => {
   const body = { name, scopes };
   if (expires_at) body.expires_at = expires_at;
+  if (allowed_ips) body.allowed_ips = allowed_ips;
   return result(await v2("POST", "/api-keys", body));
 });
 
@@ -603,6 +640,11 @@ server.registerTool("list_smtp_credentials", {
   inputSchema: { domain_id: z.number().describe("Domain ID") },
   annotations: { readOnlyHint: true },
 }, async ({ domain_id }) => result(await v2("GET", `/domains/${domain_id}/smtp-credentials`)));
+
+server.registerTool("list_all_smtp_credentials", {
+  description: "List all SMTP credentials across all domains in the organization",
+  annotations: { readOnlyHint: true },
+}, async () => result(await v2("GET", "/smtp-credentials")));
 
 server.registerTool("create_smtp_credential", {
   description: "Create SMTP credentials for a domain",
@@ -776,7 +818,7 @@ server.registerTool("set_notification_preferences", {
   inputSchema: {
     domain_id: z.number().describe("Domain ID"),
     muted: z.boolean().optional().describe("Mute all notifications for this domain"),
-    muted_types: z.array(z.string()).optional().describe("Array of notification types to mute"),
+    min_priority: z.string().optional().describe("Minimum priority threshold for notifications"),
   },
 }, async ({ domain_id, ...prefs }) => {
   const body = {};
@@ -792,8 +834,11 @@ server.registerTool("set_notification_preferences", {
 
 server.registerTool("initiate_domain_transfer", {
   description: "Initiate a domain transfer to another tenant",
-  inputSchema: { domain_id: z.number().describe("Domain ID") },
-}, async ({ domain_id }) => result(await v2("POST", `/domains/${domain_id}/transfer`)));
+  inputSchema: {
+    domain_id: z.number().describe("Domain ID"),
+    recipient_email: z.string().describe("Email address of the transfer recipient"),
+  },
+}, async ({ domain_id, recipient_email }) => result(await v2("POST", `/domains/${domain_id}/transfer`, { recipient_email })));
 
 server.registerTool("cancel_domain_transfer", {
   description: "Cancel a pending domain transfer",
@@ -941,10 +986,10 @@ server.registerTool("bulk_update_aliases", {
     is_active: z.boolean().optional().describe("Enable or disable all"),
   },
 }, async ({ alias_ids, forward_to, is_active }) => {
-  const body = { alias_ids };
-  if (forward_to) body.forward_to = forward_to;
-  if (is_active !== undefined) body.is_active = is_active;
-  return result(await v2("POST", "/aliases/bulk-update", body));
+  const changes = {};
+  if (forward_to) changes.forward_to = forward_to;
+  if (is_active !== undefined) changes.is_active = is_active;
+  return result(await v2("POST", "/aliases/bulk-update", { alias_ids, changes }));
 });
 
 // ═══════════════════════════════════════════════════════════════════
